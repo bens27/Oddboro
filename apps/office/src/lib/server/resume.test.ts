@@ -120,3 +120,13 @@ test('a chat has a session only while its session file names one: a missing, bro
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('session.json keeps how full the session was, and an unusable count reads as none', () => {
+  assert.deepEqual(parseSession('{"sessionId":"abc","home":"","context":130000}'), {
+    sessionId: 'abc',
+    home: '',
+    context: 130000
+  });
+  assert.deepEqual(parseSession('{"sessionId":"abc","context":"full"}'), { sessionId: 'abc' });
+  assert.deepEqual(parseSession('{"sessionId":"abc","context":-1}'), { sessionId: 'abc' });
+});

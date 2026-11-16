@@ -27,7 +27,19 @@
 // Odd's folder to reads (2026-11-06), a run has no shell and Codex's
 // read-only mode, so apply_patch writes nothing.
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  rmSync
+} from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import {
   currentPlatform,
@@ -515,6 +527,65 @@ function toolOf(item: Record<string, unknown>): string | undefined {
 }
 
 const count = (n: unknown) => (typeof n === 'number' ? n : 0);
+
+/** How much of a session file's end `codexContext` reads: its last token count is near the end. */
+const ROLLOUT_TAIL = 1 << 20;
+
+/**
+ * How full a Codex thread's context was at its last model call, in tokens.
+ * `codex exec --json` gives only the turn's sum, so this reads the session
+ * file Codex keeps for the thread, `<home>/sessions/YYYY/MM/DD/rollout-*-<thread>.jsonl`:
+ * its last `token_count` event's `last_token_usage.total_tokens` (Codex 0.169,
+ * where input counts the cached tokens). Undefined when there is none.
+ */
+export function codexContext(home: string, thread: string): number | undefined {
+  const file = rolloutOf(join(home, 'sessions'), `-${thread}.jsonl`);
+  if (!file) return undefined;
+  let tail: string;
+  const fd = openSync(file, 'r');
+  try {
+    const size = fstatSync(fd).size;
+    const length = Math.min(size, ROLLOUT_TAIL);
+    const buf = Buffer.alloc(length);
+    readSync(fd, buf, 0, length, size - length);
+    tail = buf.toString('utf8');
+  } finally {
+    closeSync(fd);
+  }
+  for (const line of tail.split('\n').reverse()) {
+    if (!line.includes('"token_count"')) continue;
+    try {
+      const e = JSON.parse(line) as {
+        payload?: { type?: string; info?: { last_token_usage?: { total_tokens?: unknown } } };
+      };
+      const total = e.payload?.info?.last_token_usage?.total_tokens;
+      if (e.payload?.type === 'token_count' && typeof total === 'number') return total;
+    } catch {
+      // The first line of the tail may be cut: an older count is no use anyway.
+    }
+  }
+  return undefined;
+}
+
+/** The newest session file in Codex's dated folders whose name ends with `suffix`. */
+function rolloutOf(dir: string, suffix: string): string | undefined {
+  let names: string[];
+  try {
+    names = readdirSync(dir).sort().reverse();
+  } catch {
+    return undefined;
+  }
+  for (const name of names) {
+    const path = join(dir, name);
+    if (name.endsWith(suffix)) return path;
+    // Year, month and day folders, newest first, since a resumed thread is usually recent.
+    if (/^\d+$/.test(name)) {
+      const found = rolloutOf(path, suffix);
+      if (found) return found;
+    }
+  }
+  return undefined;
+}
 
 /**
  * A reader of one run's `codex exec --json` lines (shapes from Codex's

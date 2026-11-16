@@ -1330,6 +1330,72 @@ test("a recorded Grok chat replays as it ran: the floor sees each tool by Claude
   }
 });
 
+test('a chat session past its limit writes its notes before the next reply, which starts a fresh session with them', async () => {
+  const { HANDOFF_TOKENS } = await import('./chat-handoff.ts');
+  const session = '00000000-0000-4000-8000-0000000000a1';
+  // A recorded Grok turn whose last model call read `tokens`, in Claude Code's shape.
+  const recorded = (name: string, tokens: number) => {
+    const file = join(folder, `${name}.jsonl`);
+    writeFileSync(
+      file,
+      [
+        { type: 'system', subtype: 'init', session_id: session },
+        {
+          type: 'assistant',
+          parent_tool_use_id: null,
+          session_id: session,
+          message: {
+            content: [{ type: 'text', text: 'Noted.' }],
+            usage: { input_tokens: tokens - 10, output_tokens: 10 }
+          }
+        },
+        { type: 'result', subtype: 'success', result: 'Noted.', session_id: session }
+      ]
+        .map((l) => JSON.stringify(l))
+        .join('\n') + '\n'
+    );
+    return file;
+  };
+  const notes = L.home('staff', 'gus', L.OFFICE_FILES.checkpoint);
+  try {
+    // Below the limit: the next chat resumes the session.
+    await chat('gus', `Replay ${recorded('roomy', HANDOFF_TOKENS - 1)}`, () => {});
+    assert.equal(
+      JSON.parse(readFileSync(L.chatSession('gus'), 'utf8')).context,
+      HANDOFF_TOKENS - 1
+    );
+    const resumed = await chatOf('gus', 'Still there?');
+    assert.equal(resumed.args[resumed.args.indexOf('-r') + 1], session);
+    assert.ok(!existsSync(notes), 'a session below its limit wrote notes');
+
+    await chat('gus', `Replay ${recorded('full', HANDOFF_TOKENS)}`, () => {});
+    const fresh = await chatOf('gus', 'What next?');
+    // The full session wrote the notes: the stand-in's reply is what it was given, args first.
+    const written = readFileSync(notes, 'utf8');
+    assert.ok(
+      written.includes(`"-r","${session}"`),
+      'the notes did not come from the full session'
+    );
+    // The reply after them started a fresh session, told the notes first.
+    assert.ok(!fresh.args.includes('-r'), 'the reply after the notes resumed the full session');
+    assert.ok(
+      fresh.message.startsWith(
+        '(Where you left off: notes you wrote for yourself when your last chat session filled up.'
+      ),
+      fresh.message.slice(0, 200)
+    );
+    assert.ok(
+      fresh.message.includes(written.slice(0, 200)),
+      'the fresh session was not told the notes'
+    );
+    assert.ok(fresh.message.trimEnd().endsWith('What next?'), fresh.message.slice(-200));
+  } finally {
+    rmSync(L.chatSession('gus'), { force: true });
+    rmSync(notes, { force: true });
+    rmSync(L.home('staff', 'gus', 'chat.jsonl'), { force: true });
+  }
+});
+
 test("a run never loads the owner's own CLAUDE.md or keeps an auto-memory, and still gets the office's instructions and its message", async () => {
   // A parent session's settings are dropped, and the run's own are set.
   process.env.CLAUDE_CODE_DISABLE_CLAUDE_MDS = '0';

@@ -98,6 +98,8 @@ export type RunEvent =
   /** One streamed piece of the reply, as it comes. */
   | { type: 'delta'; text: string }
   | { type: 'usage'; usage: ModelUsage }
+  /** How full the session's context is after one model call, in tokens: the last one counts. */
+  | { type: 'context'; tokens: number }
   /** What the tool said of the plan's limits (Claude Code's `rate_limit_event`), as it said it. */
   | { type: 'plan'; info: unknown }
   /**

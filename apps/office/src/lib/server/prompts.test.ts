@@ -221,3 +221,8 @@ test("a hand-off to an Odd at Act that acts on its own on colleagues' work is to
     const h = await gave('lead', 'paige', { title: 'Count the cups' });
     t.assert.snapshot(told(await dueRun(h.id)));
   }));
+
+test("a full chat session's ask for its notes is told exactly what its snapshot holds", async (t) => {
+  const { CHECKPOINT_ASK } = await import('./chat-handoff.ts');
+  t.assert.snapshot(CHECKPOINT_ASK);
+});

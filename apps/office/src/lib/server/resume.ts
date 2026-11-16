@@ -40,10 +40,19 @@ export function sectionsOf(system: string, desk: string): Sections {
  * login). A session lives in its tool's folder, so a run in another one (the
  * Odd moved to another account) starts a new session, which hears the chat.
  */
-export type Saved = { sessionId: string; seen?: Sections; home?: string };
+export type Saved = {
+  sessionId: string;
+  seen?: Sections;
+  home?: string;
+  /** How full the session's context was at its last model call, in tokens, when its tool said. */
+  context?: number;
+};
 
 /** Writes session.json after a run, with what the session saw, so its next turn sends only what changed. */
-export function saveSession(file: string, saved: Required<Saved>): void {
+export function saveSession(
+  file: string,
+  saved: Required<Omit<Saved, 'context'>> & Pick<Saved, 'context'>
+): void {
   writeFileSync(file, JSON.stringify(saved));
 }
 
@@ -60,9 +69,12 @@ export function parseSession(text: string): Saved | undefined {
     return undefined;
   }
   if (typeof raw !== 'object' || raw === null) return undefined;
-  const { sessionId, seen, home } = raw as { sessionId?: unknown; seen?: unknown; home?: unknown };
+  const { sessionId, seen, home, context } = raw as Record<string, unknown>;
   if (typeof sessionId !== 'string') return undefined;
-  const where = typeof home === 'string' ? { home } : {};
+  const where = {
+    ...(typeof home === 'string' ? { home } : {}),
+    ...(typeof context === 'number' && context >= 0 ? { context } : {})
+  };
   const isSections =
     typeof seen === 'object' &&
     seen !== null &&

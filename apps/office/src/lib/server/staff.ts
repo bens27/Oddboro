@@ -164,6 +164,7 @@ import { notifyMac } from './notify.ts';
 import { OUTCOME_LINE, personaRun, voiced } from './persona-run.ts';
 import { offeredSection } from './persona-offered.ts';
 import { catchUp, NOW, parseSession, saveSession, sectionsOf } from './resume.ts';
+import { codexContext } from './codex.ts';
 import { toolServerEnv } from './run-env-allow.ts';
 import { cut, officeEnv } from './run-env.ts';
 import { sandboxPaths } from './sandbox-paths.ts';
@@ -737,6 +738,8 @@ export type RunOpts = {
   draftOnly?: boolean;
   /** A run that only reads the owner's reason or edit for a lesson (`servesNoThread`): it hands nothing on. */
   lessonRun?: boolean;
+  /** A chat run that writes the chat session's checkpoint (`handOver`): the Odd's own notes, which a persona never voices. */
+  handoff?: boolean;
   /** The hand-off a colleague's run serves: asks and tasks it raises carry it, and it cannot hand off. */
   handOffId?: number;
   /** The thread the run works on, either side: it reads the thread's folder and writes its own part. */
@@ -818,7 +821,7 @@ export async function run(who: StaffRow, message: string, opts: RunOpts): Promis
   live.stop.signal.addEventListener('abort', interrupted, { once: true });
   try {
     const r = await Promise.race([
-      who.package && voiced(kind) && !opts.lessonRun
+      who.package && voiced(kind) && !opts.lessonRun && !opts.handoff
         ? personaRun(who, message, { ...input, kind }, runTool)
         : runTool(who, message, input),
       ended.promise
@@ -1129,6 +1132,8 @@ async function runTool(who: StaffRow, message: string, opts: RunOpts): Promise<R
   const [cmd, before] = agentCommand(who.agent) ?? [who.agent, []];
   /** Codex's and Gemini's whole messages, as the chat shows them. */
   let said = '';
+  /** How full the session's context was at the run's last model call, when its tool says. */
+  let context: number | undefined;
   const sink: Sink = {
     event: (e) => {
       switch (e.type) {
@@ -1154,6 +1159,9 @@ async function runTool(who: StaffRow, message: string, opts: RunOpts): Promise<R
           break;
         case 'plan':
           void notePlan(e.info);
+          break;
+        case 'context':
+          context = e.tokens;
           break;
         default: {
           // The type check fails here until a new kind of event has its case.
@@ -1207,8 +1215,16 @@ async function runTool(who: StaffRow, message: string, opts: RunOpts): Promise<R
   // left the chat "still replying" until the office restarted.
   try {
     void closeGateway(gate);
-    if (end.session && opts.sessionFile)
-      saveSession(opts.sessionFile, { sessionId: end.session, seen: sections, home: toolDir });
+    if (end.session && opts.sessionFile) {
+      // Codex says it only in the session file it keeps (`codexContext`).
+      if (who.agent === 'codex') context = codexContext(toolDir, end.session);
+      saveSession(opts.sessionFile, {
+        sessionId: end.session,
+        seen: sections,
+        home: toolDir,
+        ...(context === undefined ? {} : { context })
+      });
+    }
     // The time limit passed while it got ready, so the driver started nothing.
     if (end.outcome === 'timeout' && !started)
       console.error(

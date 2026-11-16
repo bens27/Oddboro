@@ -59,7 +59,8 @@ export const accountHome = (tool: string, account: string): string =>
 
 /**
  * The office's own files at the top of an Odd's folder, by what each holds:
- * the chat log (staff.ts), the chat's run session, a persona's session at
+ * the chat log (staff.ts), the chat's run session, the checkpoint a full
+ * chat session left for the next (chat-handoff.ts), a persona's session at
  * its door (persona-door.ts), the bug report a chat run drafted
  * (bug-drafts.ts), and its update request (chat-updates.ts). Each writer takes its name from here, so an
  * Odd never mails one, the Storage tab never lists one, and a replay never
@@ -68,6 +69,7 @@ export const accountHome = (tool: string, account: string): string =>
 export const OFFICE_FILES = {
   chat: 'chat.jsonl',
   session: 'session.json',
+  checkpoint: 'checkpoint.md',
   personaSession: 'persona-session.json',
   bugDraft: 'bug-draft.json',
   updateRequest: 'update-request.json'

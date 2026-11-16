@@ -833,6 +833,17 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    wrote is said once; of a failed run's line the replay holds, it says only
    that the run failed.
    Nothing on screen shows it.
+   A chat session hands over before it fills up. Each chat run keeps in
+   `session.json` how full the session was at its last model call
+   (`context`: Claude Code's and Grok's `assistant` usage, `contextOf` in
+   `src/lib/server/claude.ts`; Codex's last `token_count` in its session
+   file, `codexContext` in `src/lib/server/codex.ts`; Gemini says nothing,
+   so it never hands over). At 120,000 tokens (`HANDOFF_TOKENS`), the next
+   reply first asks the full session for notes (`handOver` in
+   `src/lib/server/chat-handoff.ts`, a `handoff` chat run a persona never
+   voices), keeps them in `checkpoint.md` and drops `session.json`. Every new
+   session's first message then opens with those notes (`leftOff`), before
+   the replay. A run that fails to write them keeps the session.
    The office tells each run's tool server about the run through its
    environment (`officeEnv` in `src/lib/server/run-env.ts`): every run gets a
    `RUN_KEY`, and a `denied` or `edited` run, which only reads the owner's

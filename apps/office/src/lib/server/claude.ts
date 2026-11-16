@@ -560,6 +560,25 @@ export function streamTools(agent: Agent, e: Record<string, unknown>): string[] 
 }
 
 /**
+ * How full the session's context is after the model call one `assistant`
+ * line came from: everything that call read, cached or not, and what it
+ * wrote. A subagent's line (`parent_tool_use_id` set) counts its own context,
+ * not the session's, so it says nothing.
+ */
+export function contextOf(e: Record<string, unknown>): number | undefined {
+  if (e.type !== 'assistant' || e.parent_tool_use_id != null) return undefined;
+  const u = (e.message as { usage?: Record<string, unknown> } | undefined)?.usage;
+  if (!u) return undefined;
+  const n = (v: unknown) => (typeof v === 'number' && v > 0 ? v : 0);
+  return (
+    n(u.input_tokens) +
+    n(u.cache_creation_input_tokens) +
+    n(u.cache_read_input_tokens) +
+    n(u.output_tokens)
+  );
+}
+
+/**
  * A reader of one run's Claude Code stream (`--output-format stream-json`),
  * which Grok's follows (`agent` names its tools). It reports what the stream
  * says and decides nothing: a `result` line that is not a plain success
@@ -587,6 +606,8 @@ export function claudeReader(
     // Claude Code's own shape for it, which the ledger's usage reads as it is.
     if (e.type === 'result' && e.modelUsage)
       events.push({ type: 'usage', usage: e.modelUsage as ModelUsage });
+    const tokens = contextOf(e);
+    if (tokens !== undefined) events.push({ type: 'context', tokens });
     for (const name of streamTools(agent, e)) events.push({ type: 'tool', name });
     if (e.type === 'stream_event') {
       const ev = e.event as { type: string; delta?: { type: string; text?: string } };

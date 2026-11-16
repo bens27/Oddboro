@@ -30,7 +30,10 @@ export type RunEnd =
 /** What the caller hears as the run goes, in order. The end comes as `RunEnd`, and `error` events go to its stderr. */
 export type Sink = {
   event: (
-    e: Extract<RunEvent, { type: 'session' | 'tool' | 'message' | 'delta' | 'usage' | 'plan' }>
+    e: Extract<
+      RunEvent,
+      { type: 'session' | 'tool' | 'message' | 'delta' | 'usage' | 'plan' | 'context' }
+    >
   ) => void;
 };
 
@@ -205,6 +208,7 @@ export function drive(
             case 'tool':
             case 'usage':
             case 'plan':
+            case 'context':
               sink.event(ev);
               break;
             case 'error':

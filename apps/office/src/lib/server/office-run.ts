@@ -184,11 +184,12 @@ async function runOn(
           case 'plan':
             void notePlan(e.info);
             break;
-          // An office run shows nothing as it goes.
+          // An office run shows nothing as it goes, and keeps no session to hand over.
           case 'session':
           case 'tool':
           case 'message':
           case 'delta':
+          case 'context':
             break;
           default: {
             // The type check fails here until a new kind of event has its case.

@@ -27,6 +27,7 @@ import { attachedFiles, filesNow } from './chat-files.ts';
 import { replyBrief, savedTaskWords } from './chat-delivery.ts';
 import { missingChatSignIn } from './chat-sign-in.ts';
 import { sessionIdIn } from './resume.ts';
+import { handOver, leftOff } from './chat-handoff.ts';
 import { changedSince, replay, replayed, replayedAt, replaySince } from './replay.ts';
 import {
   chatPreface,
@@ -188,8 +189,11 @@ export async function replyToOwnerTurn(
       const past: RetoldEntry[] = before.map((e) =>
         e.files?.length ? { ...e, now: filesNow(id, e.files) } : e
       );
-      // A new session (the Odd moved to another tool, or its session is gone)
-      // never saw the chat: it gets the latest of it word for word. The preface
+      // A session nearly full hands over first, so this reply starts a fresh one.
+      await handOver(who, live.key, CHAT_TIMEOUT_MS);
+      // A new session (the Odd moved to another tool, its session is gone, or
+      // it just handed over) never saw the chat: it gets the notes the last
+      // one left (`leftOff`), then the latest of the chat word for word. The preface
       // leaves out the told, poke and failed run's owner lines the replay holds,
       // and keeps those the budget cut, so each line since the owner last wrote
       // is said once.
@@ -205,7 +209,9 @@ export async function replyToOwnerTurn(
       const writable = ownTools(who, currentPlatform())
         .granted.filter((f) => f.write)
         .map((f) => f.path);
+      const notes = resumed ? undefined : leftOff(id);
       const prompt = [
+        ...(notes ? [notes] : []),
         ...(since
           ? [
               replay(

@@ -58,9 +58,11 @@ test('the first chat after a tool switch replays the chat; the next does not', a
   );
   assert.equal(moved.status, 200);
   // The office's own files beside the chat log changed too, and are never named
-  // as changed. An empty session is no session, so this one is still new.
+  // as changed. An empty session is no session, so this one is still new, and
+  // empty notes are no notes, so it starts with the replay.
   for (const name of L.OFFICE_FILE_NAMES)
-    if (name !== L.OFFICE_FILES.chat) writeFileSync(own(name), '{}');
+    if (name !== L.OFFICE_FILES.chat)
+      writeFileSync(own(name), name === L.OFFICE_FILES.checkpoint ? '' : '{}');
 
   const one = await chatOf('rory', 'What did I just ask you?');
   assert.ok(
