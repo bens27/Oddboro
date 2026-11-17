@@ -113,6 +113,32 @@ export async function setOwnerName(name: string): Promise<void> {
     .onConflictDoUpdate({ target: owner.id, set: { name: n, updatedAt: new Date() } });
 }
 
+/** The most the owner's handoff script may hold, in characters. */
+export const HANDOFF_SCRIPT_MAX = 8_000;
+
+/** The owner's own handoff script, or null while the office's is in use. */
+export async function handoffScript(q: Db = db): Promise<string | null> {
+  const [row] = await q
+    .select({ script: owner.handoffScript })
+    .from(owner)
+    .where(eq(owner.id, 'owner'));
+  return row?.script ?? null;
+}
+
+/**
+ * Keep the owner's handoff script, or with null go back to the office's. The
+ * office starts before the welcome names the owner, so the row may not exist yet.
+ */
+export async function setHandoffScript(script: string | null): Promise<void> {
+  const s = script?.trim() || null;
+  if (s && s.length > HANDOFF_SCRIPT_MAX)
+    throw fixedError('Keep the script under 8,000 characters');
+  await db
+    .insert(owner)
+    .values({ id: 'owner', name: '', handoffScript: s, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: owner.id, set: { handoffScript: s, updatedAt: new Date() } });
+}
+
 /** The plan windows as last reported. A window past its reset reads as unused. */
 export async function plan() {
   const [row] = await db.select().from(planLimits).where(eq(planLimits.id, PLAN_ROW));

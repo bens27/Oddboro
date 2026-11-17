@@ -841,7 +841,9 @@ pieces under 3,900 bytes a line, so no value is on a command line.
    so it never hands over). At 120,000 tokens (`HANDOFF_TOKENS`), the next
    reply first asks the full session for notes (`handOver` in
    `src/lib/server/chat-handoff.ts`, a `handoff` chat run a persona never
-   voices), keeps them in `checkpoint.md` and drops `session.json`. Every new
+   voices; it asks `checkpointAsk()`, the owner's script from Setup's
+   Session handoff section, `/api/setup/handoff`, or the office's
+   `CHECKPOINT_ASK`), keeps them in `checkpoint.md` and drops `session.json`. Every new
    session's first message then opens with those notes (`leftOff`), before
    the replay. A run that fails to write them keeps the session.
    The office tells each run's tool server about the run through its

@@ -1389,10 +1389,125 @@ test('a chat session past its limit writes its notes before the next reply, whic
       'the fresh session was not told the notes'
     );
     assert.ok(fresh.message.trimEnd().endsWith('What next?'), fresh.message.slice(-200));
+
+    // The owner's own script from Setup is what the next full session is asked, until they restore the office's.
+    const { CHECKPOINT_ASK, checkpointAsk } = await import('./chat-handoff.ts');
+    await L.setHandoffScript('Write the plan {owner} and you agreed, and nothing else.');
+    assert.equal(await checkpointAsk(), 'Write the plan {owner} and you agreed, and nothing else.');
+    await L.setHandoffScript(null);
+    assert.equal(await checkpointAsk(), CHECKPOINT_ASK);
   } finally {
+    await L.setHandoffScript(null);
     rmSync(L.chatSession('gus'), { force: true });
     rmSync(notes, { force: true });
     rmSync(L.home('staff', 'gus', 'chat.jsonl'), { force: true });
+  }
+});
+
+test('two full sessions hand over at once, and each Odd goes on with its own notes; a second message to one Odd is refused and writes none', async () => {
+  const { HANDOFF_TOKENS } = await import('./chat-handoff.ts');
+  // Gus runs on Grok and Cleo on Claude Code, so both tools hand over side by side.
+  const odds = [
+    { id: 'gus', session: '00000000-0000-4000-8000-0000000000b1', resume: '-r' },
+    { id: 'cleo', session: '00000000-0000-4000-8000-0000000000b2', resume: '--resume' }
+  ];
+  const full = (id: string, session: string) => {
+    const file = join(folder, `${id}-full.jsonl`);
+    writeFileSync(
+      file,
+      [
+        { type: 'system', subtype: 'init', session_id: session },
+        {
+          type: 'assistant',
+          parent_tool_use_id: null,
+          session_id: session,
+          message: {
+            content: [{ type: 'text', text: 'Noted.' }],
+            usage: { input_tokens: HANDOFF_TOKENS, output_tokens: 10 }
+          }
+        },
+        { type: 'result', subtype: 'success', result: 'Noted.', session_id: session }
+      ]
+        .map((l) => JSON.stringify(l))
+        .join('\n') + '\n'
+    );
+    return file;
+  };
+  const notesOf = (id: string) => L.home('staff', id, L.OFFICE_FILES.checkpoint);
+  try {
+    // Gus fills up through a recorded Grok turn. Claude Code's stand-in replays
+    // nothing, so Cleo's full session is the file such a turn leaves.
+    await chat('gus', `Replay ${full('gus', odds[0].session)}`, () => {});
+    const { runHomeOf } = await import('./staff.ts');
+    mkdirSync(dirname(L.chatSession('cleo')), { recursive: true });
+    writeFileSync(
+      L.chatSession('cleo'),
+      JSON.stringify({
+        sessionId: odds[1].session,
+        home: await runHomeOf((await L.staffer('cleo'))!),
+        context: HANDOFF_TOKENS
+      })
+    );
+    // Both Odds' next messages land together, so both hand over at the same time.
+    const [gus, cleo] = await Promise.all(odds.map((o) => chatOf(o.id, `${o.id}, what next?`)));
+    for (const [o, fresh, other] of [
+      [odds[0], gus, odds[1]],
+      [odds[1], cleo, odds[0]]
+    ] as const) {
+      const written = readFileSync(notesOf(o.id), 'utf8');
+      // The notes came from this Odd's own full session, never the other's.
+      assert.ok(
+        written.includes(`"${o.resume}","${o.session}"`),
+        `${o.id}'s notes: ${written.slice(0, 300)}`
+      );
+      assert.ok(
+        !written.includes(other.session),
+        `${o.id}'s notes came from ${other.id}'s session`
+      );
+      // Its fresh session opened with its own notes and its own message.
+      assert.ok(!fresh.args.includes(o.resume), `${o.id}'s reply resumed the full session`);
+      assert.ok(
+        fresh.message.includes(written.slice(0, 200)),
+        `${o.id} was not told its own notes`
+      );
+      assert.ok(!fresh.message.includes(other.session), `${o.id} was told ${other.id}'s notes`);
+      assert.ok(fresh.message.trimEnd().endsWith(`${o.id}, what next?`), fresh.message.slice(-200));
+      // The full session is gone, so the next message never resumes it.
+      const kept = existsSync(L.chatSession(o.id))
+        ? (JSON.parse(readFileSync(L.chatSession(o.id), 'utf8')) as { sessionId?: string })
+            .sessionId
+        : undefined;
+      assert.notEqual(kept, o.session, `${o.id} kept its full session`);
+    }
+
+    // One Odd full again, sent two messages at once: one reply hands over, the other is refused.
+    rmSync(notesOf('gus'), { force: true });
+    await chat('gus', `Replay ${full('gus', odds[0].session)}`, () => {});
+    const both = await Promise.allSettled([chatOf('gus', 'First.'), chatOf('gus', 'Second.')]);
+    const done = both.filter((r) => r.status === 'fulfilled');
+    const refused = both.filter((r) => r.status === 'rejected');
+    assert.equal(done.length, 1, JSON.stringify(both.map((r) => r.status)));
+    assert.match(
+      String((refused[0] as PromiseRejectedResult).reason),
+      /already replying|in progress/
+    );
+    const once = readFileSync(notesOf('gus'), 'utf8');
+    assert.ok(
+      once.includes(`"-r","${odds[0].session}"`),
+      'the notes did not come from the full session'
+    );
+    assert.ok(
+      (
+        done[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof chatOf>>>
+      ).value.message.includes(once.slice(0, 200)),
+      'the reply that went ahead was not told the notes'
+    );
+  } finally {
+    for (const o of odds) {
+      rmSync(L.chatSession(o.id), { force: true });
+      rmSync(notesOf(o.id), { force: true });
+      rmSync(L.home('staff', o.id, 'chat.jsonl'), { force: true });
+    }
   }
 });
 

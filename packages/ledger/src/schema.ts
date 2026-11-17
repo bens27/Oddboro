@@ -1065,6 +1065,11 @@ export const owner = pgTable('owner', {
    * while null nothing puts an Odd at Act (`changeLevel`, `hire`).
    */
   actCheckAt: at('act_check_at'),
+  /**
+   * The owner's own words for what a full chat session is asked to write
+   * before it hands over (chat-handoff.ts), from Setup. Null for the office's.
+   */
+  handoffScript: text('handoff_script'),
   updatedAt: at('updated_at').notNull().defaultNow()
 });
 

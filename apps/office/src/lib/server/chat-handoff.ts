@@ -4,7 +4,7 @@
 // own files) and ends the session, and the fresh session's first message
 // starts with them, before the latest of the chat word for word.
 import { readFileSync, rmSync } from 'node:fs';
-import { chatSession, home, OFFICE_FILES, type StaffRow } from '@oddboro/ledger';
+import { chatSession, handoffScript, home, OFFICE_FILES, type StaffRow } from '@oddboro/ledger';
 import { replace } from './launch.ts';
 import { parseSession } from './resume.ts';
 import { run, runHomeOf } from './staff.ts';
@@ -21,7 +21,10 @@ export const CHECKPOINT_MAX = 16_000;
 
 const checkpointOf = (id: string) => home('staff', id, OFFICE_FILES.checkpoint);
 
-/** What the full session is asked to write. Its whole reply is the notes. */
+/**
+ * What the full session is asked to write, unless the owner wrote their own in
+ * Setup (`handoffScript`). Its whole reply is the notes.
+ */
 export const CHECKPOINT_ASK = `(Office note: this chat session is nearly full, so the office starts you a fresh one before your next reply. The fresh session will not remember this one. It gets the latest of the chat word for word, and the notes you write now. {owner} never sees them.
 
 Write the notes as your whole reply, in these sections:
@@ -42,6 +45,9 @@ What you learned that the chat alone will not tell you: names, preferences, and 
 What you would do next, in order.
 
 Write only the notes, and use no tool.)`;
+
+/** What a full session is asked now: the owner's script from Setup, or the office's. */
+export const checkpointAsk = async (): Promise<string> => (await handoffScript()) ?? CHECKPOINT_ASK;
 
 /** How the notes open the fresh session's first message. */
 const LEFT_OFF_HEAD =
@@ -66,7 +72,7 @@ export async function handOver(who: StaffRow, runId: string, timeoutMs: number):
   const saved = parseSession(text);
   if (!saved || (saved.home ?? '') !== (await runHomeOf(who))) return;
   if ((saved.context ?? 0) < HANDOFF_TOKENS) return;
-  const r = await run(who, CHECKPOINT_ASK, {
+  const r = await run(who, await checkpointAsk(), {
     kind: 'chat',
     runId,
     sessionFile: file,

@@ -1,0 +1,1 @@
+ALTER TABLE "owner" ADD COLUMN "handoff_script" text;

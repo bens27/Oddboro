@@ -3,6 +3,7 @@
   import type { Check } from '@oddboro/ledger/checks';
   import AccountSection from './AccountSection.svelte';
   import AdvancedSection from './AdvancedSection.svelte';
+  import HandoffSection from './HandoffSection.svelte';
   import BackupSection from './BackupSection.svelte';
   import { AgentTools } from './agent-tools.svelte.ts';
   import { call } from './api.ts';
@@ -199,6 +200,7 @@
       {#if setup}
         <BackupSection app={setup.app} ownDatabase={setup.ownDatabase} />
       {/if}
+      <HandoffSection />
       <AdvancedSection />
     {/if}
 

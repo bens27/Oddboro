@@ -617,6 +617,11 @@ const jobOf = async (name: string) =>
  * rows each needs, then its call.
  */
 const CHANGES: Partial<Record<Key, (send: Send) => Promise<void>>> = {
+  // The owner's own session handoff script, then back to the office's.
+  'PUT /api/setup/handoff': async (send) => {
+    await send({ body: { script: 'Write what {owner} wants next.' } });
+    await send({ body: { script: null } });
+  },
   'POST /api/staff/[id]/pokes': async (send) => {
     await L.pg`insert into pokes (staff_id, at, message, status)
       values ('sam', now(), 'How did the call go?', 'sent')`;
